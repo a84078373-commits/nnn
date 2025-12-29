@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام تعلم اللغة الإنجليزية بلغة الإشارة</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            direction: rtl;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .test-section {
+            grid-column: 1 / -1;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .camera-section {
+            position: relative;
+        }
+
+        #video {
+            width: 100%;
+            border-radius: 15px;
+            background: #000;
+            display: block;
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .hand-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            z-index: 10;
+            display: none;
+        }
+
+        .hand-indicator.detected {
+            background: rgba(17, 153, 142, 0.9);
+            display: block;
+        }
+
+        .hand-indicator.not-detected {
+            background: rgba(255, 107, 107, 0.9);
+            display: block;
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: white;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(17, 153, 142, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(235, 51, 73, 0.4);
+        }
+
+        .prediction-result {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin-top: 15px;
+            font-size: 1.5em;
+            font-weight: bold;
+            display: none;
+        }
+
+        .prediction-result.show {
+            display: block;
+            animation: slideIn 0.5s;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .word-input-section {
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        #wordInput {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #667eea;
+            border-radius: 10px;
+            font-size: 1.2em;
+            outline: none;
+        }
+
+        #wordInput:focus {
+            border-color: #764ba2;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .avatar-section {
+            text-align: center;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            border-radius: 15px;
+            padding: 30px;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .avatar {
+            font-size: 8em;
+            margin-bottom: 20px;
+            animation: wave 2s infinite;
+        }
+
+        @keyframes wave {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(10deg); }
+            75% { transform: rotate(-10deg); }
+        }
+
+        .sign-display {
+            font-size: 6em;
+            margin: 20px 0;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .word-letters {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .letter-box {
+            background: rgba(255,255,255,0.2);
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-size: 2em;
+            font-weight: bold;
+            color: white;
+            min-width: 60px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .letter-box:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.1);
+        }
+
+        .letter-box.active {
+            background: white;
+            color: #f5576c;
+            transform: scale(1.2);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .status {
+            text-align: center;
+            padding: 10px;
+            border-radius: 10px;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+
+        .status.recording {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .status.idle {
+            background: #51cf66;
+            color: white;
+        }
+
+        .status.realtime {
+            background: #ffd43b;
+            color: #333;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .predicting {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .test-card {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            text-align: center;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        .test-letter-display {
+            font-size: 8em;
+            font-weight: bold;
+            margin: 30px 0;
+            text-shadow: 3px 3px 6px rgba(0,0,0,0.3);
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .test-stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            font-size: 1.3em;
+        }
+
+        .stat-item {
+            background: rgba(255,255,255,0.2);
+            padding: 15px 30px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .celebration {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+        }
+
+        .celebration.show {
+            display: block;
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #ffd700;
+            animation: confetti-fall 3s linear;
+        }
+
+        @keyframes confetti-fall {
+            0% {
+                transform: translateY(-100vh) rotate(0deg);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        .success-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            z-index: 10000;
+            text-align: center;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+            animation: popIn 0.5s;
+        }
+
+        @keyframes popIn {
+            0% {
+                transform: translate(-50%, -50%) scale(0);
+            }
+            50% {
+                transform: translate(-50%, -50%) scale(1.1);
+            }
+            100% {
+                transform: translate(-50%, -50%) scale(1);
+            }
+        }
+
+        .success-emoji {
+            font-size: 5em;
+            margin-bottom: 20px;
+            animation: rotate 0.5s;
+        }
+
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 968px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤟 نظام تعلم اللغة الإنجليزية بلغة الإشارة</h1>
+            <p>تعلم الإنجليزية بطريقة تفاعلية مع التعرف على الإشارات</p>
+        </div>
+
+        <div class="main-content">
+            <!-- Camera Section -->
+            <div class="card camera-section">
+                <h2>📷 التعرف على الإشارات</h2>
+                <div style="position: relative;">
+                    <video id="video" autoplay playsinline></video>
+                    <div class="hand-indicator" id="handIndicator">
+                        <span id="handStatus">🔍 جاري البحث عن اليد...</span>
+                    </div>
+                </div>
+                <canvas id="canvas"></canvas>
+                
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="startCamera()">تشغيل الكاميرا</button>
+                    <button class="btn btn-success" id="realtimeToggle" onclick="toggleRealtimeRecognition()">بدء التعرف الفوري</button>
+                    <button class="btn btn-danger" onclick="stopCamera()">إيقاف الكاميرا</button>
+                </div>
+                
+                <div style="text-align: center; margin-top: 10px; font-size: 0.9em; color: #666;">
+                    💡 نصيحة: أظهر يدك بوضوح أمام الكاميرا
+                </div>
+
+                <div class="status idle" id="cameraStatus">الكاميرا متوقفة</div>
+                
+                <div class="prediction-result" id="predictionResult">
+                    <div id="predictedLetter"></div>
+                    <div style="font-size: 0.6em; margin-top: 10px;" id="confidence"></div>
+                </div>
+            </div>
+
+            <!-- Word Translation Section -->
+            <div class="card">
+                <h2>📝 ترجمة الكلمات</h2>
+                
+                <div class="word-input-section">
+                    <div class="input-group">
+                        <input type="text" id="wordInput" placeholder="اكتب كلمة بالإنجليزية...">
+                        <button class="btn btn-primary" onclick="translateWord()">ترجمة</button>
+                    </div>
+                </div>
+
+                <div class="avatar-section">
+                    <div class="avatar" id="avatar">👋</div>
+                    <div class="sign-display" id="currentSign">A</div>
+                    <div class="word-letters" id="wordLetters"></div>
+                </div>
+            </div>
+
+            <!-- Test Section -->
+            <div class="card test-section">
+                <h2>🎯 اختبار الإشارات</h2>
+                <div class="test-card">
+                    <h3 style="font-size: 1.5em; margin-bottom: 20px;">أظهر الإشارة التالية:</h3>
+                    <div class="test-letter-display" id="testLetter">?</div>
+                    <div class="test-stats">
+                        <div class="stat-item">
+                            <div>النقاط</div>
+                            <div id="testScore" style="font-size: 1.5em; font-weight: bold;">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div>المحاولات</div>
+                            <div id="testAttempts" style="font-size: 1.5em; font-weight: bold;">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div>الصحيحة</div>
+                            <div id="testCorrect" style="font-size: 1.5em; font-weight: bold;">0</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 30px;">
+                        <button class="btn btn-primary" onclick="startTest()" id="startTestBtn">بدء الاختبار</button>
+                        <button class="btn btn-success" onclick="checkTestAnswer()" id="checkBtn" style="display: none; margin-right: 10px;">تحقق من الإجابة</button>
+                        <button class="btn btn-danger" onclick="stopTest()" id="stopTestBtn" style="display: none;">إيقاف الاختبار</button>
+                    </div>
+                    <div id="testResult" style="margin-top: 20px; font-size: 1.3em; min-height: 30px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Celebration Overlay -->
+    <div class="celebration" id="celebration"></div>
+    
+    <!-- Success Message -->
+    <div class="success-message" id="successMessage">
+        <div class="success-emoji">🎉</div>
+        <h2 style="color: #11998e; margin-bottom: 10px;">رائع!</h2>
+        <p style="font-size: 1.2em; color: #666;">إجابة صحيحة! 🎊</p>
+    </div>
+
+    <script>
+        let videoStream = null;
+        let currentWordLetters = [];
+        let currentLetterIndex = 0;
+        let signInterval = null;
+        let realtimeInterval = null;
+        let isRealtimeMode = false;
+        let isPredicting = false;
+
+        // Camera functions
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    } 
+                });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                videoStream = stream;
+                document.getElementById('cameraStatus').textContent = 'الكاميرا تعمل';
+                document.getElementById('cameraStatus').className = 'status recording';
+            } catch (error) {
+                alert('خطأ في تشغيل الكاميرا: ' + error.message);
+            }
+        }
+
+        function stopCamera() {
+            // Stop realtime recognition
+            if (realtimeInterval) {
+                clearInterval(realtimeInterval);
+                realtimeInterval = null;
+                isRealtimeMode = false;
+            }
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+                const video = document.getElementById('video');
+                video.srcObject = null;
+                document.getElementById('cameraStatus').textContent = 'الكاميرا متوقفة';
+                document.getElementById('cameraStatus').className = 'status idle';
+                document.getElementById('realtimeToggle').textContent = 'بدء التعرف الفوري';
+            }
+        }
+
+        async function captureAndPredict() {
+            if (isPredicting) return;
+            
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            if (!videoStream || video.readyState !== video.HAVE_ENOUGH_DATA) {
+                alert('يرجى تشغيل الكاميرا أولاً');
+                return;
+            }
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+
+            // Convert canvas to base64
+            const imageData = canvas.toDataURL('image/jpeg', 0.9);
+
+            isPredicting = true;
+            try {
+                const response = await fetch('/predict_base64', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const result = await response.json();
+                
+                // Update hand detection indicator
+                const handIndicator = document.getElementById('handIndicator');
+                const handStatus = document.getElementById('handStatus');
+                
+                if (result.hand_detected !== undefined) {
+                    if (result.hand_detected) {
+                        handIndicator.className = 'hand-indicator detected';
+                        handStatus.textContent = '✅ اليد مكتشفة';
+                    } else {
+                        handIndicator.className = 'hand-indicator not-detected';
+                        handStatus.textContent = '⚠️ اليد غير مكتشفة - أظهر يدك بوضوح';
+                    }
+                }
+                
+                if (result.predicted_letter) {
+                    // Filter out 'nothing' and low confidence predictions
+                    // Use higher threshold if hand not detected
+                    const minConfidence = result.hand_detected ? 0.3 : 0.6;
+                    
+                    if (result.predicted_letter !== 'nothing' && result.confidence > minConfidence) {
+                        document.getElementById('predictedLetter').textContent = 
+                            `الحرف المكتشف: ${result.predicted_letter}`;
+                        document.getElementById('confidence').textContent = 
+                            `الدقة: ${(result.confidence * 100).toFixed(1)}%`;
+                        document.getElementById('predictionResult').classList.add('show');
+                    } else if (result.predicted_letter === 'nothing') {
+                        // Hide result if nothing detected
+                        document.getElementById('predictionResult').classList.remove('show');
+                    }
+                } else if (result.error) {
+                    console.error('خطأ في التعرف: ' + result.error);
+                }
+            } catch (error) {
+                console.error('خطأ في الاتصال: ' + error.message);
+            } finally {
+                isPredicting = false;
+            }
+        }
+
+        // Real-time recognition
+        function toggleRealtimeRecognition() {
+            if (!videoStream) {
+                alert('يرجى تشغيل الكاميرا أولاً');
+                return;
+            }
+
+            if (isRealtimeMode) {
+                // Stop realtime
+                if (realtimeInterval) {
+                    clearInterval(realtimeInterval);
+                    realtimeInterval = null;
+                }
+                isRealtimeMode = false;
+                document.getElementById('realtimeToggle').textContent = 'بدء التعرف الفوري';
+                document.getElementById('cameraStatus').textContent = 'الكاميرا تعمل';
+                document.getElementById('cameraStatus').className = 'status recording';
+            } else {
+                // Start realtime
+                isRealtimeMode = true;
+                document.getElementById('realtimeToggle').textContent = 'إيقاف التعرف الفوري';
+                document.getElementById('cameraStatus').textContent = 'التعرف الفوري نشط';
+                document.getElementById('cameraStatus').className = 'status realtime';
+                
+                // Predict every 500ms
+                realtimeInterval = setInterval(() => {
+                    if (!isPredicting) {
+                        captureAndPredict();
+                    }
+                }, 500);
+            }
+        }
+
+        // Word translation functions
+        async function translateWord() {
+            const wordInput = document.getElementById('wordInput');
+            const word = wordInput.value.trim();
+
+            if (!word) {
+                alert('يرجى إدخال كلمة');
+                return;
+            }
+
+            try {
+                const response = await fetch('/translate_word', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ word: word })
+                });
+
+                const result = await response.json();
+                
+                if (result.letters) {
+                    currentWordLetters = result.letters;
+                    currentLetterIndex = 0;
+                    
+                    // Display letters
+                    const wordLettersDiv = document.getElementById('wordLetters');
+                    wordLettersDiv.innerHTML = '';
+                    result.letters.forEach((letter, index) => {
+                        const letterBox = document.createElement('div');
+                        letterBox.className = 'letter-box';
+                        letterBox.textContent = letter;
+                        letterBox.onclick = () => showLetter(index);
+                        wordLettersDiv.appendChild(letterBox);
+                    });
+
+                    // Start showing signs
+                    showNextLetter();
+                } else {
+                    alert('خطأ: ' + (result.error || 'خطأ غير معروف'));
+                }
+            } catch (error) {
+                alert('خطأ في الاتصال: ' + error.message);
+            }
+        }
+
+        function showLetter(index) {
+            if (index >= 0 && index < currentWordLetters.length) {
+                currentLetterIndex = index;
+                const letter = currentWordLetters[index];
+                document.getElementById('currentSign').textContent = letter;
+                
+                // Update active letter
+                const letterBoxes = document.querySelectorAll('.letter-box');
+                letterBoxes.forEach((box, i) => {
+                    box.classList.toggle('active', i === index);
+                });
+
+                // Animate avatar
+                animateAvatar();
+            }
+        }
+
+        function showNextLetter() {
+            if (currentWordLetters.length === 0) return;
+
+            showLetter(currentLetterIndex);
+            currentLetterIndex = (currentLetterIndex + 1) % currentWordLetters.length;
+
+            // Auto-advance every 2 seconds
+            if (signInterval) clearInterval(signInterval);
+            signInterval = setInterval(() => {
+                showLetter(currentLetterIndex);
+                currentLetterIndex = (currentLetterIndex + 1) % currentWordLetters.length;
+            }, 2000);
+        }
+
+        function animateAvatar() {
+            const avatar = document.getElementById('avatar');
+            avatar.style.animation = 'none';
+            setTimeout(() => {
+                avatar.style.animation = 'wave 0.5s';
+            }, 10);
+        }
+
+        // Allow Enter key to translate
+        document.getElementById('wordInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                translateWord();
+            }
+        });
+
+        // Test Mode Variables
+        let testMode = false;
+        let currentTestLetter = '';
+        let testScore = 0;
+        let testAttempts = 0;
+        let testCorrect = 0;
+        let testRealtimeInterval = null;
+
+        // Test Functions
+        async function startTest() {
+            if (!videoStream) {
+                alert('يرجى تشغيل الكاميرا أولاً');
+                return;
+            }
+
+            // Get random letter
+            try {
+                const response = await fetch('/get_test_letter');
+                const result = await response.json();
+                currentTestLetter = result.letter;
+                document.getElementById('testLetter').textContent = currentTestLetter;
+                
+                testMode = true;
+                document.getElementById('startTestBtn').style.display = 'none';
+                document.getElementById('checkBtn').style.display = 'inline-block';
+                document.getElementById('stopTestBtn').style.display = 'inline-block';
+                document.getElementById('testResult').textContent = 'أظهر إشارة ' + currentTestLetter + ' أمام الكاميرا';
+                document.getElementById('testResult').style.color = '#fff';
+                
+                // Start real-time recognition for test
+                testRealtimeInterval = setInterval(async () => {
+                    if (!isPredicting && testMode) {
+                        await checkTestAnswer();
+                    }
+                }, 1000);
+            } catch (error) {
+                alert('خطأ في بدء الاختبار: ' + error.message);
+            }
+        }
+
+        function stopTest() {
+            testMode = false;
+            if (testRealtimeInterval) {
+                clearInterval(testRealtimeInterval);
+                testRealtimeInterval = null;
+            }
+            document.getElementById('startTestBtn').style.display = 'inline-block';
+            document.getElementById('checkBtn').style.display = 'none';
+            document.getElementById('stopTestBtn').style.display = 'none';
+            document.getElementById('testResult').textContent = '';
+            document.getElementById('testLetter').textContent = '?';
+        }
+
+        async function checkTestAnswer() {
+            if (!testMode || !videoStream || isPredicting) return;
+
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+
+            const imageData = canvas.toDataURL('image/jpeg', 0.9);
+
+            isPredicting = true;
+            try {
+                // Get prediction
+                const predictResponse = await fetch('/predict_base64', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const predictResult = await predictResponse.json();
+                
+                // Update hand detection indicator in test mode
+                const handIndicator = document.getElementById('handIndicator');
+                const handStatus = document.getElementById('handStatus');
+                
+                if (predictResult.hand_detected !== undefined) {
+                    if (predictResult.hand_detected) {
+                        handIndicator.className = 'hand-indicator detected';
+                        handStatus.textContent = '✅ اليد مكتشفة';
+                    } else {
+                        handIndicator.className = 'hand-indicator not-detected';
+                        handStatus.textContent = '⚠️ اليد غير مكتشفة';
+                    }
+                }
+                
+                // Use higher threshold based on hand detection
+                const minConfidence = predictResult.hand_detected ? 0.5 : 0.7;
+                
+                if (predictResult.predicted_letter && predictResult.predicted_letter !== 'nothing' && predictResult.confidence > minConfidence) {
+                    // Check answer
+                    const checkResponse = await fetch('/check_answer', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            predicted_letter: predictResult.predicted_letter,
+                            correct_letter: currentTestLetter
+                        })
+                    });
+
+                    const checkResult = await checkResponse.json();
+                    testAttempts++;
+
+                    if (checkResult.is_correct) {
+                        // Correct answer!
+                        testScore += 10;
+                        testCorrect++;
+                        showCelebration();
+                        document.getElementById('testResult').textContent = '🎉 إجابة صحيحة! ' + currentTestLetter;
+                        document.getElementById('testResult').style.color = '#ffd700';
+                        
+                        // Update stats
+                        document.getElementById('testScore').textContent = testScore;
+                        document.getElementById('testAttempts').textContent = testAttempts;
+                        document.getElementById('testCorrect').textContent = testCorrect;
+                        
+                        // Get new letter after 2 seconds
+                        setTimeout(async () => {
+                            const newLetterResponse = await fetch('/get_test_letter');
+                            const newLetterResult = await newLetterResponse.json();
+                            currentTestLetter = newLetterResult.letter;
+                            document.getElementById('testLetter').textContent = currentTestLetter;
+                            document.getElementById('testResult').textContent = 'أظهر إشارة ' + currentTestLetter + ' أمام الكاميرا';
+                            document.getElementById('testResult').style.color = '#fff';
+                        }, 2000);
+                    } else {
+                        document.getElementById('testResult').textContent = 
+                            '❌ خطأ! حاولت: ' + predictResult.predicted_letter + ' | المطلوب: ' + currentTestLetter;
+                        document.getElementById('testResult').style.color = '#ff6b6b';
+                        
+                        // Update stats
+                        document.getElementById('testAttempts').textContent = testAttempts;
+                    }
+                }
+            } catch (error) {
+                console.error('خطأ في التحقق: ' + error.message);
+            } finally {
+                isPredicting = false;
+            }
+        }
+
+        function showCelebration() {
+            // Show success message
+            const successMsg = document.getElementById('successMessage');
+            successMsg.classList.add('show');
+            
+            // Create confetti
+            const celebration = document.getElementById('celebration');
+            celebration.classList.add('show');
+            
+            const colors = ['#ffd700', '#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7'];
+            
+            for (let i = 0; i < 100; i++) {
+                setTimeout(() => {
+                    const confetti = document.createElement('div');
+                    confetti.className = 'confetti';
+                    confetti.style.left = Math.random() * 100 + '%';
+                    confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+                    confetti.style.animationDelay = Math.random() * 0.5 + 's';
+                    confetti.style.width = (Math.random() * 10 + 5) + 'px';
+                    confetti.style.height = (Math.random() * 10 + 5) + 'px';
+                    celebration.appendChild(confetti);
+                    
+                    setTimeout(() => {
+                        confetti.remove();
+                    }, 3000);
+                }, i * 10);
+            }
+            
+            // Hide success message after 2 seconds
+            setTimeout(() => {
+                successMsg.classList.remove('show');
+                celebration.classList.remove('show');
+            }, 2000);
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            stopCamera();
+            stopTest();
+        });
+    </script>
+</body>
+</html>
+
