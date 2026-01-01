@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, Response
 import torch
 import torch.nn as nn
 from torchvision import models
-from PIL import Image
+from PIL import Image, ImageEnhance
 import json
 import io
 import base64
@@ -142,6 +142,39 @@ def detect_hand_opencv(image_np):
     
     return None
 
+def enhance_image(image):
+    """Enhance image quality (brightness, contrast, sharpness)"""
+    # Convert to numpy for processing
+    img_array = np.array(image)
+    
+    # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) for better contrast
+    if len(img_array.shape) == 3:
+        lab = cv2.cvtColor(img_array, cv2.COLOR_RGB2LAB)
+        l, a, b = cv2.split(lab)
+        
+        # Apply CLAHE to L channel
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        
+        # Merge channels
+        lab = cv2.merge([l, a, b])
+        img_array = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+    
+    # Convert back to PIL Image
+    enhanced_image = Image.fromarray(img_array)
+    
+    # Additional enhancements using PIL
+    enhancer = ImageEnhance.Contrast(enhanced_image)
+    enhanced_image = enhancer.enhance(1.1)  # Slight contrast boost
+    
+    enhancer = ImageEnhance.Brightness(enhanced_image)
+    enhanced_image = enhancer.enhance(1.05)  # Slight brightness boost
+    
+    enhancer = ImageEnhance.Sharpness(enhanced_image)
+    enhanced_image = enhancer.enhance(1.1)  # Slight sharpness boost
+    
+    return enhanced_image
+
 def extract_hand_region(image):
     """Extract hand region from image"""
     image_np = np.array(image)
@@ -156,13 +189,20 @@ def extract_hand_region(image):
     # If hand detected, crop it
     if bbox:
         x_min, y_min, x_max, y_max = bbox
+        # Ensure valid bounding box
+        w, h = image.size
+        x_min = max(0, min(x_min, w-1))
+        y_min = max(0, min(y_min, h-1))
+        x_max = max(x_min+1, min(x_max, w))
+        y_max = max(y_min+1, min(y_max, h))
+        
         hand_crop = image.crop((x_min, y_min, x_max, y_max))
         return hand_crop, True
     
     # If no hand detected, return center crop (assume hand is in center)
     w, h = image.size
     center_x, center_y = w // 2, h // 2
-    crop_size = min(w, h) * 0.7  # 70% of smaller dimension
+    crop_size = min(w, h) * 0.75  # 75% of smaller dimension for better coverage
     x_min = max(0, int(center_x - crop_size // 2))
     y_min = max(0, int(center_y - crop_size // 2))
     x_max = min(w, int(center_x + crop_size // 2))
@@ -172,18 +212,22 @@ def extract_hand_region(image):
     return hand_crop, False
 
 # Image preprocessing with better handling and hand detection
-def preprocess_image(image, detect_hand=True):
-    """Preprocess image for model input with hand detection"""
+def preprocess_image(image, detect_hand=True, enhance=True):
+    """Preprocess image for model input with hand detection and enhancement"""
     # Convert to RGB if needed
     if image.mode != 'RGB':
         image = image.convert('RGB')
+    
+    # Enhance image quality
+    if enhance:
+        image = enhance_image(image)
     
     # Extract hand region if enabled
     hand_detected = False
     if detect_hand:
         image, hand_detected = extract_hand_region(image)
     
-    # Resize to 224x224 (maintain aspect ratio and crop center)
+    # Resize to 224x224 using high-quality resampling
     image = image.resize((224, 224), Image.Resampling.LANCZOS)
     
     # Convert to numpy array and normalize
@@ -216,8 +260,8 @@ def predict():
         file = request.files['image']
         image = Image.open(io.BytesIO(file.read()))
         
-        # Preprocess
-        image_tensor = preprocess_image(image)
+        # Preprocess with enhancement
+        image_tensor, _ = preprocess_image(image, detect_hand=False, enhance=True)
         
         # Predict
         with torch.no_grad():
@@ -253,8 +297,8 @@ def predict_base64():
         image_bytes = base64.b64decode(image_data)
         image = Image.open(io.BytesIO(image_bytes))
         
-        # Preprocess with hand detection
-        image_tensor, hand_detected = preprocess_image(image, detect_hand=True)
+        # Preprocess with hand detection and enhancement
+        image_tensor, hand_detected = preprocess_image(image, detect_hand=True, enhance=True)
         
         # Predict
         with torch.no_grad():
@@ -265,29 +309,44 @@ def predict_base64():
         
         predicted_letter = id2label[predicted_class]
         
-        # Smart filtering - higher threshold if hand not detected
-        min_confidence = 0.5 if hand_detected else 0.7
+        # Improved filtering logic - lower thresholds for better accuracy
+        # Base threshold is lower to allow more predictions through
+        min_confidence = 0.25 if hand_detected else 0.35
         
-        # Additional filtering: check top 3 predictions for consistency
+        # Get top 3 predictions for better analysis
         top3_probs, top3_indices = torch.topk(probabilities[0], 3)
         top3_letters = [id2label[idx.item()] for idx in top3_indices]
         
-        # If top prediction is much higher than second, trust it more
+        # Calculate confidence ratio between top 2 predictions
         confidence_ratio = top3_probs[0].item() / (top3_probs[1].item() + 1e-6)
         
-        # Require higher confidence if predictions are close
-        if confidence_ratio < 2.0:  # Top prediction not clearly better
-            min_confidence = min_confidence + 0.1
+        # If top prediction is clearly better (ratio > 1.5), accept it even with lower confidence
+        # Only require higher confidence if predictions are very close
+        if confidence_ratio < 1.3:  # Very close predictions
+            min_confidence = max(min_confidence, 0.4)
+        elif confidence_ratio > 2.0:  # Clear winner
+            min_confidence = max(min_confidence - 0.1, 0.15)  # Lower threshold
         
-        # Filter out low confidence predictions and 'nothing'
-        if confidence < min_confidence or predicted_letter == 'nothing':
+        # Only filter out 'nothing' class if confidence is very low
+        # Allow other predictions with reasonable confidence
+        if predicted_letter == 'nothing' and confidence > 0.3:
+            # If 'nothing' has high confidence but other classes are close, prefer second best
+            if top3_probs[1].item() > 0.25 and top3_letters[1] != 'nothing':
+                predicted_letter = top3_letters[1]
+                confidence = top3_probs[1].item()
+        elif confidence < min_confidence:
+            # Very low confidence - return nothing
             predicted_letter = 'nothing'
             confidence = 0.0
         
         return jsonify({
             'predicted_letter': predicted_letter,
             'confidence': float(confidence),
-            'hand_detected': hand_detected
+            'hand_detected': hand_detected,
+            'top3_predictions': [
+                {'letter': top3_letters[i], 'confidence': float(top3_probs[i].item())}
+                for i in range(len(top3_letters))
+            ]
         })
     
     except Exception as e:
