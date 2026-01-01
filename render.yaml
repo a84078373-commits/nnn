@@ -6,6 +6,8 @@ services:
     buildCommand: |
       python -m pip install --upgrade pip
       python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.9.1 torchvision==0.24.1
-      pip install -r requirements.txt
+      python -m pip install --prefer-binary wheel setuptools
+      python -m pip install --prefer-binary transformers==4.35.0 pillow tokenizers
+      python -m pip install --prefer-binary -r requirements.txt
     startCommand: gunicorn app:app
     pythonVersion: "3.11"
