@@ -1,7 +1,5 @@
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify
 import torch
-import torch.nn as nn
-from torchvision import models
 from PIL import Image, ImageEnhance
 import json
 import io
@@ -10,20 +8,37 @@ import numpy as np
 import cv2
 from model import ASLResNet
 import os
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
 # Load model configuration
-with open('config.json', 'r') as f:
-    config = json.load(f)
+config_path = 'config.json'
+model_path = 'pytorch_model.bin'
+
+if not os.path.exists(config_path):
+    logger.error(f"❌ ملف config.json غير موجود في: {os.path.abspath(config_path)}")
+    config = {'num_classes': 26, 'class_names': [chr(i) for i in range(65, 91)]}  # A-Z
+else:
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    logger.info("✅ تم تحميل config.json بنجاح")
 
 # Initialize model
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"📱 استخدام الجهاز: {device}")
+logger.info(f"📱 استخدام الجهاز: {device}")
 
 try:
+    if not os.path.exists(model_path):
+        logger.warning(f"⚠️ ملف النموذج pytorch_model.bin غير موجود. سيستخدم النموذج بدون تدريب")
+        raise FileNotFoundError(f"Model file not found: {model_path}")
+    
     model = ASLResNet(num_classes=config['num_classes'])
-    state_dict = torch.load('pytorch_model.bin', map_location=device)
+    state_dict = torch.load(model_path, map_location=device)
     
     # Handle different model save formats
     if isinstance(state_dict, dict) and 'model_state_dict' in state_dict:
@@ -35,17 +50,18 @@ try:
     
     model.to(device)
     model.eval()
-    print("✅ تم تحميل النموذج بنجاح!")
+    logger.info("✅ تم تحميل النموذج بنجاح!")
 except Exception as e:
-    print(f"❌ خطأ في تحميل النموذج: {e}")
-    print("⚠️ سيتم استخدام النموذج بدون تحميل الوزنات المدربة")
+    logger.error(f"❌ خطأ في تحميل النموذج: {e}")
+    logger.info("⚠️ سيتم استخدام النموذج بدون تحميل الوزنات المدربة")
     model = ASLResNet(num_classes=config['num_classes'])
     model.to(device)
     model.eval()
 
 # Class names mapping
-class_names = config['class_names']
+class_names = config.get('class_names', [chr(i) for i in range(65, 91)])  # Default A-Z
 id2label = {i: name for i, name in enumerate(class_names)}
+logger.info(f"📊 عدد الفئات: {len(class_names)}")
 
 # Hand detection using MediaPipe (if available) or OpenCV
 try:
@@ -59,10 +75,10 @@ try:
         min_tracking_confidence=0.5
     )
     USE_MEDIAPIPE = True
-    print("✅ MediaPipe متاح - سيتم استخدامه لكشف اليد")
+    logger.info("✅ MediaPipe متاح - سيتم استخدامه لكشف اليد")
 except ImportError:
     USE_MEDIAPIPE = False
-    print("⚠️ MediaPipe غير متاح - سيتم استخدام OpenCV لكشف اليد")
+    logger.info("⚠️ MediaPipe غير متاح - سيتم استخدام OpenCV لكشف اليد")
 
 def detect_hand_mediapipe(image_np):
     """Detect hand using MediaPipe"""
@@ -92,7 +108,7 @@ def detect_hand_mediapipe(image_np):
                 
                 return (x_min, y_min, x_max, y_max)
     except Exception as e:
-        print(f"خطأ في MediaPipe: {e}")
+        logger.error(f"خطأ في MediaPipe: {e}")
     
     return None
 
@@ -138,7 +154,7 @@ def detect_hand_opencv(image_np):
                 
                 return (x_min, y_min, x_max, y_max)
     except Exception as e:
-        print(f"خطأ في OpenCV hand detection: {e}")
+        logger.error(f"خطأ في OpenCV hand detection: {e}")
     
     return None
 
@@ -211,7 +227,6 @@ def extract_hand_region(image):
     hand_crop = image.crop((x_min, y_min, x_max, y_max))
     return hand_crop, False
 
-# Image preprocessing with better handling and hand detection
 def preprocess_image(image, detect_hand=True, enhance=True):
     """Preprocess image for model input with hand detection and enhancement"""
     # Convert to RGB if needed
@@ -250,6 +265,16 @@ def preprocess_image(image, detect_hand=True, enhance=True):
 def index():
     return render_template('index.html')
 
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'model_loaded': os.path.exists(model_path),
+        'device': str(device),
+        'num_classes': config['num_classes']
+    })
+
 @app.route('/predict', methods=['POST'])
 def predict():
     """Predict sign language from uploaded image"""
@@ -278,10 +303,12 @@ def predict():
             'all_probabilities': {
                 id2label[i]: float(prob) 
                 for i, prob in enumerate(probabilities[0])
+                if prob > 0.01  # Only show probabilities > 1%
             }
         })
     
     except Exception as e:
+        logger.error(f"Error in /predict: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/predict_base64', methods=['POST'])
@@ -309,26 +336,23 @@ def predict_base64():
         
         predicted_letter = id2label[predicted_class]
         
-        # Improved filtering logic - lower thresholds for better accuracy
-        # Base threshold is lower to allow more predictions through
-        min_confidence = 0.25 if hand_detected else 0.35
-        
         # Get top 3 predictions for better analysis
         top3_probs, top3_indices = torch.topk(probabilities[0], 3)
         top3_letters = [id2label[idx.item()] for idx in top3_indices]
         
+        # Improved filtering logic
+        min_confidence = 0.25 if hand_detected else 0.35
+        
         # Calculate confidence ratio between top 2 predictions
         confidence_ratio = top3_probs[0].item() / (top3_probs[1].item() + 1e-6)
         
-        # If top prediction is clearly better (ratio > 1.5), accept it even with lower confidence
-        # Only require higher confidence if predictions are very close
+        # Adjust threshold based on confidence ratio
         if confidence_ratio < 1.3:  # Very close predictions
             min_confidence = max(min_confidence, 0.4)
         elif confidence_ratio > 2.0:  # Clear winner
-            min_confidence = max(min_confidence - 0.1, 0.15)  # Lower threshold
+            min_confidence = max(min_confidence - 0.1, 0.15)
         
-        # Only filter out 'nothing' class if confidence is very low
-        # Allow other predictions with reasonable confidence
+        # Handle 'nothing' class
         if predicted_letter == 'nothing' and confidence > 0.3:
             # If 'nothing' has high confidence but other classes are close, prefer second best
             if top3_probs[1].item() > 0.25 and top3_letters[1] != 'nothing':
@@ -350,6 +374,7 @@ def predict_base64():
         })
     
     except Exception as e:
+        logger.error(f"Error in /predict_base64: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/translate_word', methods=['POST'])
@@ -372,6 +397,7 @@ def translate_word():
         })
     
     except Exception as e:
+        logger.error(f"Error in /translate_word: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/get_test_letter', methods=['GET'])
@@ -380,6 +406,9 @@ def get_test_letter():
     import random
     # Get only alphabet letters (A-Z)
     letters = [letter for letter in class_names if letter.isalpha() and len(letter) == 1]
+    if not letters:
+        letters = [chr(i) for i in range(65, 91)]  # Fallback to A-Z
+    
     random_letter = random.choice(letters)
     
     return jsonify({
@@ -407,14 +436,31 @@ def check_answer():
         })
     
     except Exception as e:
+        logger.error(f"Error in /check_answer: {e}")
         return jsonify({'error': str(e)}), 500
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    print("\n" + "="*50)
-    print("🚀 بدء تشغيل الخادم...")
-    print(f"📍 العنوان المحلي: http://127.0.0.1:{port}")
-    print(f"📍 العنوان المحلي: http://localhost:{port}")
-    print("="*50 + "\n")
-    app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
+@app.teardown_request
+def teardown_request(exception=None):
+    """Cleanup after each request"""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
+if __name__ == '__main__':
+    # ✅ الإصلاح هنا: استخدم المتغير port بدلاً من الرقم الثابت
+    port = int(os.environ.get('PORT', 5000))
+    
+    print("\n" + "="*50)
+    print("🚀 بدء تشغيل خادم لغة الإشارة")
+    print("="*50)
+    print(f"📁 المسار الحالي: {os.getcwd()}")
+    print(f"📊 عدد الفئات: {len(class_names)}")
+    print(f"📱 الجهاز: {device}")
+    print(f"🔗 العنوان المحلي: http://127.0.0.1:{port}")
+    print(f"🔗 العنوان المحلي: http://localhost:{port}")
+    print(f"🌐 العنوان الشبكي: http://192.168.0.101:{port}")
+    print("="*50)
+    print("✅ الخادم جاهز! اضغط CTRL+C للإيقاف")
+    print("="*50 + "\n")
+    
+    # ✅ الإصلاح النهائي: استخدام المتغير port
+    app.run(host='0.0.0.0', port=port, debug=False)
