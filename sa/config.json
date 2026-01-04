@@ -1,0 +1,1 @@
+{"architectures": ["ASLResNet"], "model_type": "resnet", "num_classes": 29, "class_names": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "del", "nothing", "space"], "image_size": 224, "pretrained": true, "base_model": "resnet50"}
