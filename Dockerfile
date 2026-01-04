@@ -8,6 +8,13 @@ WORKDIR /app
 COPY requirements.txt .
 
 # تثبيت المتطلبات
+# ترقية pip أولاً
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# تثبيت PyTorch من المصدر الرسمي (CPU only)
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.1.0 torchvision==0.16.0
+
+# تثبيت باقي المتطلبات
 RUN pip install --no-cache-dir -r requirements.txt
 
 # نسخ بقية الملفات
