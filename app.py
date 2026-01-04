@@ -9,10 +9,53 @@ import cv2
 from model import ASLResNet
 import os
 import logging
+import warnings
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# إخفاء التحذيرات غير الضرورية - يجب أن يكون في البداية قبل استيراد أي مكتبة
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # إخفاء جميع رسائل TensorFlow (0=all, 1=info, 2=warnings, 3=errors)
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # تعطيل oneDNN warnings
+os.environ['KERAS_BACKEND'] = 'tensorflow'  # تعيين backend لـ Keras
+
+# إخفاء جميع أنواع التحذيرات
+import warnings
+warnings.filterwarnings('ignore')
+warnings.simplefilter('ignore')
+
+# إخفاء تحذيرات Keras/TensorFlow بشكل خاص
+import sys
+import io
+
+# إنشاء wrapper لـ stderr لإخفاء تحذيرات Keras
+class SuppressKerasWarnings:
+    def __init__(self, original_stderr):
+        self.original_stderr = original_stderr
+        self.buffer = []
+    
+    def write(self, message):
+        # تصفية رسائل Keras/TensorFlow غير المرغوبة
+        if any(keyword in message.lower() for keyword in [
+            'deprecated', 'sparse_softmax_cross_entropy', 
+            'tf.losses', 'keras', 'tensorflow lite'
+        ]):
+            return
+        self.original_stderr.write(message)
+    
+    def flush(self):
+        self.original_stderr.flush()
+
+# تطبيق الفلتر على stderr قبل استيراد MediaPipe
+_original_stderr = sys.stderr
+sys.stderr = SuppressKerasWarnings(_original_stderr)
+
+# Setup logging - إخفاء تحذيرات werkzeug في الإنتاج
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s'  # تنسيق بسيط للرسائل
+)
 logger = logging.getLogger(__name__)
+
+# إخفاء تحذيرات werkzeug
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 app = Flask(__name__)
 
@@ -79,6 +122,9 @@ try:
 except ImportError:
     USE_MEDIAPIPE = False
     logger.info("⚠️ MediaPipe غير متاح - سيتم استخدام OpenCV لكشف اليد")
+finally:
+    # استعادة stderr بعد تحميل MediaPipe
+    sys.stderr = _original_stderr
 
 def detect_hand_mediapipe(image_np):
     """Detect hand using MediaPipe"""
@@ -449,6 +495,19 @@ if __name__ == '__main__':
     # ✅ الإصلاح هنا: استخدم المتغير port بدلاً من الرقم الثابت
     port = int(os.environ.get('PORT', 5000))
     
+    # إخفاء رسالة "development server" من Flask
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    
+    # الحصول على عنوان IP المحلي
+    try:
+        import socket
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+    except:
+        local_ip = "localhost"
+    
     print("\n" + "="*50)
     print("🚀 بدء تشغيل خادم لغة الإشارة")
     print("="*50)
@@ -457,10 +516,11 @@ if __name__ == '__main__':
     print(f"📱 الجهاز: {device}")
     print(f"🔗 العنوان المحلي: http://127.0.0.1:{port}")
     print(f"🔗 العنوان المحلي: http://localhost:{port}")
-    print(f"🌐 العنوان الشبكي: http://192.168.0.101:{port}")
+    if local_ip != "localhost":
+        print(f"🌐 العنوان الشبكي: http://{local_ip}:{port}")
     print("="*50)
     print("✅ الخادم جاهز! اضغط CTRL+C للإيقاف")
     print("="*50 + "\n")
     
     # ✅ الإصلاح النهائي: استخدام المتغير port
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
